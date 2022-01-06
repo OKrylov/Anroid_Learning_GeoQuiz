@@ -1,13 +1,18 @@
 package com.bignerdranch.android.geomain
 
 import android.os.Bundle
+import android.util.Log
 import android.view.Gravity
 import android.widget.Button
 import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import kotlin.math.abs
+import androidx.lifecycle.ViewModelProvider
+
+private const val TAG = "MainActivity"
+private const val KEY_INDEX = "index"
+
 
 class MainActivity : AppCompatActivity() {
 
@@ -17,24 +22,22 @@ class MainActivity : AppCompatActivity() {
     private lateinit var backButton: ImageButton
     private lateinit var questionTextView: TextView
 
-    private val questionBank = listOf(
-        Question(R.string.question_australia, true),
-        Question(R.string.question_oceans, true),
-        Question(R.string.question_mideast, false),
-        Question(R.string.question_africa, false),
-        Question(R.string.question_americas, true),
-        Question(R.string.question_asia, true),
-    )
+    private val viewModel: QuizViewModel by lazy {
+        ViewModelProvider(this).get(QuizViewModel::class.java)
+    }
 
-    private val answeredQuestions = HashSet<Question>()
 
-    private var currentIndex = 0
-    private var rightAnswers = 0
-
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        Log.i(TAG, "onSaveInstanceState")
+        outState.putInt(KEY_INDEX, viewModel.currentIndex)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        viewModel.currentIndex = savedInstanceState?.getInt(KEY_INDEX, 0) ?: 0
 
         initViews()
 
@@ -49,12 +52,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun goToPreviousQuestion() {
-        currentIndex = if (currentIndex == 0) questionBank.lastIndex else currentIndex - 1
+        viewModel.moveToBack()
         updateQuestion()
     }
 
     private fun goToNextQuestion() {
-        currentIndex = (currentIndex + 1) % questionBank.size
+        viewModel.moveToNext()
         updateQuestion()
     }
 
@@ -67,31 +70,31 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun checkAnswer(userAnswer: Boolean) {
-        answeredQuestions.add(questionBank[currentIndex])
+        val currentAnswer = viewModel.currentQuestionAnswer
+        val isAnswerCorrect = currentAnswer == userAnswer
+        viewModel.markCurrentQuestionAsAnswered(isAnswerCorrect)
         updateAnswerButtons()
-        val currentAnswer = questionBank[currentIndex].answer
-        val messageResId = if (userAnswer == currentAnswer) {
-            rightAnswers++
+
+        (if (isAnswerCorrect) {
             R.string.correct_toast
         } else {
             R.string.incorrect_toast
+        }).apply {
+            showToast(this)
         }
-        showToast(messageResId)
     }
 
     private fun updateQuestion() {
-        if (answeredQuestions.size == questionBank.size) {
-            val finishPhrase = getString(R.string.finish_phrase, (rightAnswers * 100 / questionBank.size))
+        questionTextView.setText(viewModel.currentQuestionText)
+        updateAnswerButtons()
+        if (viewModel.areAllQuestionsAnswered) {
+            val finishPhrase = getString(R.string.finish_phrase, viewModel.answeredQuestionCountInPercent)
             showToast(finishPhrase)
-        } else {
-            val questionTextResId = questionBank[currentIndex].textResId
-            questionTextView.setText(questionTextResId)
-            updateAnswerButtons()
         }
     }
 
     private fun updateAnswerButtons() {
-        val isEnabled = (questionBank[currentIndex] !in answeredQuestions)
+        val isEnabled = !viewModel.isCurrentQuestionAlreadyAnswered
         falseButton.isEnabled = isEnabled
         trueButton.isEnabled = isEnabled
     }
